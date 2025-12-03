@@ -1,0 +1,34 @@
+# Node / JS
+node_modules
+dist
+.turbo
+.next
+.vite
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store
+
+# Env & local configs
+.env
+.env.local
+.env.*.local
+backend/.env.example
+
+# Build outputs
+frontend/.vite
+frontend/dist
+backend/dist
+
+# Rust / NEAR
+target
+Cargo.lock
+
+# Mac / editor
+.DS_Store
+*.swp
+*.swo
+.idea
+.vscode
