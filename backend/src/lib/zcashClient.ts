@@ -11,6 +11,13 @@ export interface ZcashBurnResult {
   timestamp: number;
 }
 
+export interface ZcashPayoutResult {
+  txId: string;
+  amountZec: string;
+  toAddress: string;
+  timestamp: number;
+}
+
 /**
  * Burn shielded ZEC to provide privacy for the payment
  * In production, this would:
@@ -35,6 +42,25 @@ export async function burnZecForPayment(
   return {
     txId: `zcash-testnet-burn-${paymentId}-${Date.now()}`,
     amountZec,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Send shielded payout from app's ZEC balance.
+ * This is stubbed for now; real implementation would craft and broadcast
+ * a shielded transaction to the destination address.
+ */
+export async function sendShieldedPayout(
+  toAddress: string,
+  amountZec: string
+): Promise<ZcashPayoutResult> {
+  console.log(`[STUB] Sending shielded payout of ${amountZec} ZEC to ${toAddress}`);
+
+  return {
+    txId: `zcash-shielded-payout-${Date.now()}`,
+    amountZec,
+    toAddress,
     timestamp: Date.now(),
   };
 }

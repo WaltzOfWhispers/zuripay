@@ -8,22 +8,22 @@
 export interface PaymentIntentPayload {
   id: string;
   paymentId: string;
-  destChain: string; // e.g., "ethereum-sepolia"
-  destAsset: string; // e.g., "ETH"
-  destAddress: string; // recipient address
-  amountWei: string; // amount in wei for ETH
+  destChain: string; // e.g., "ethereum-sepolia" or "zcash-testnet"
+  destAsset: string; // e.g., "ETH" or "ZEC"
+  destAddress: string; // recipient address on destination chain
+  amountWei: string; // amount in wei for ETH (reused here as atomic units)
   zcashBurnTxid: string;
   createdAt: number;
 }
 
-export interface NearIntentResponse {
-  id: string;
+export interface NearIntentResponse extends PaymentIntentPayload {
   fulfilled: boolean;
   payoutTxHash?: string;
 }
 
 let nearContractId: string;
 let nearAccountId: string;
+const intentStore: NearIntentResponse[] = [];
 
 /**
  * Initialize NEAR client
@@ -40,20 +40,14 @@ export function initNearClient(contractId: string, accountId: string): void {
 export async function createNearIntent(
   intent: PaymentIntentPayload
 ): Promise<void> {
-  // TODO: Implement using near-api-js
-  // Example implementation:
-  // const account = await near.account(nearAccountId);
-  // await account.functionCall({
-  //   contractId: nearContractId,
-  //   methodName: "create_intent",
-  //   args: intent,
-  // });
+  // TODO: Implement using near-api-js in production.
+  intentStore.push({ ...intent, fulfilled: false });
 
   console.log(`[STUB] Creating NEAR intent:`, {
     intentId: intent.id,
     destChain: intent.destChain,
     destAddress: intent.destAddress,
-    amount: intent.amountWei,
+    amountAtomic: intent.amountWei,
   });
 }
 
@@ -61,16 +55,10 @@ export async function createNearIntent(
  * Fetch all open (unfulfilled) intents from NEAR
  */
 export async function fetchOpenNearIntents(): Promise<PaymentIntentPayload[]> {
-  // TODO: Implement using near-api-js
-  // const account = await near.account(nearAccountId);
-  // const result = await account.viewFunction({
-  //   contractId: nearContractId,
-  //   methodName: "list_open_intents",
-  // });
-  // return result;
-
-  console.log(`[STUB] Fetching open NEAR intents`);
-  return [];
+  // TODO: Implement using near-api-js in production.
+  const open = intentStore.filter((i) => !i.fulfilled);
+  console.log(`[STUB] Fetching open NEAR intents: ${open.length} pending`);
+  return open.map(({ fulfilled: _f, payoutTxHash: _p, ...rest }) => rest);
 }
 
 /**
@@ -80,13 +68,12 @@ export async function markNearIntentFulfilled(
   id: string,
   payoutTxHash: string
 ): Promise<void> {
-  // TODO: Implement using near-api-js
-  // const account = await near.account(nearAccountId);
-  // await account.functionCall({
-  //   contractId: nearContractId,
-  //   methodName: "mark_fulfilled",
-  //   args: { id, payout_tx_hash: payoutTxHash },
-  // });
+  // TODO: Implement using near-api-js in production.
+  const target = intentStore.find((i) => i.id === id);
+  if (target) {
+    target.fulfilled = true;
+    target.payoutTxHash = payoutTxHash;
+  }
 
   console.log(`[STUB] Marking NEAR intent fulfilled:`, {
     intentId: id,
@@ -98,7 +85,8 @@ export async function markNearIntentFulfilled(
  * Get intent details by ID
  */
 export async function getNearIntent(id: string): Promise<NearIntentResponse | null> {
-  // TODO: Implement using near-api-js
+  // TODO: Implement using near-api-js in production.
   console.log(`[STUB] Getting NEAR intent: ${id}`);
-  return null;
+  const intent = intentStore.find((i) => i.id === id);
+  return intent ? { ...intent } : null;
 }

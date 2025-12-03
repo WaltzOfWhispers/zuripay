@@ -2,22 +2,16 @@ import { ethers } from "ethers";
 
 let provider: ethers.JsonRpcProvider;
 let collectorAddress: string;
-let solverWallet: ethers.Wallet | null = null;
 
 /**
  * Initialize Ethereum client for monitoring deposits to EOA/contract
  */
 export function initEthClient(
   rpcUrl: string,
-  collectorAddr: string,
-  solverPrivateKey?: string
+  collectorAddr: string
 ): void {
   provider = new ethers.JsonRpcProvider(rpcUrl);
   collectorAddress = collectorAddr;
-
-  if (solverPrivateKey) {
-    solverWallet = new ethers.Wallet(solverPrivateKey, provider);
-  }
 }
 
 export function getCollectorAddress(): string {
@@ -25,10 +19,6 @@ export function getCollectorAddress(): string {
     throw new Error("ETH client not initialized");
   }
   return collectorAddress;
-}
-
-export function getSolverAddress(): string | undefined {
-  return solverWallet?.address;
 }
 
 /**
@@ -81,24 +71,4 @@ export async function getTransactionDetails(txHash: string) {
 export async function getEthBalance(address: string): Promise<string> {
   const balance = await provider.getBalance(address);
   return ethers.formatEther(balance);
-}
-
-/**
- * Send payout from solver wallet to recipient.
- */
-export async function sendPayoutEth(
-  recipient: string,
-  amountEth: string
-): Promise<string> {
-  if (!solverWallet) {
-    throw new Error("Solver wallet not configured");
-  }
-
-  const tx = await solverWallet.sendTransaction({
-    to: recipient,
-    value: ethers.parseEther(amountEth),
-  });
-
-  await tx.wait();
-  return tx.hash;
 }
