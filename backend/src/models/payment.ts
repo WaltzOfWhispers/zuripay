@@ -2,7 +2,7 @@ export type PaymentStatus =
   | "CREATED"
   | "WAITING_FOR_FUNDING"
   | "FUNDED"
-  | "ZEC_BURNED"
+  | "ZEC_COLLECTED"
   | "INTENT_POSTED"
   | "PAID"
   | "ERROR";

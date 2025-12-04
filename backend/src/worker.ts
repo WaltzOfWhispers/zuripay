@@ -23,9 +23,13 @@ export async function processPayment(payment: Payment): Promise<void> {
         return;
       }
 
+      const expectedAmount = (
+        parseFloat(payment.amountEth) * 1.001
+      ).toFixed(6);
+
       const confirmed = await verifyDepositTx(
         payment.fundingTxHash,
-        payment.amountEth
+        expectedAmount
       );
 
       if (!confirmed) {
@@ -38,25 +42,25 @@ export async function processPayment(payment: Payment): Promise<void> {
       payment = paymentStore.get(payment.id)!;
     }
 
-    // Step 2: Burn ZEC for privacy
+    // Step 2: Collect ZEC shielded for privacy anchor
     if (payment.status === "FUNDED") {
-      console.log(`Burning ZEC for payment ${payment.id}`);
+      console.log(`Collecting shielded ZEC for payment ${payment.id}`);
 
-      // Convert ETH amount to ZEC (simplified 1:1 for demo)
-      const amountZec = payment.amountEth;
+      // Burn a small fixed amount to conserve testnet funds
+      const amountZec = "0.001";
 
       const burnResult = await burnZecForPayment(payment.id, amountZec);
 
-      console.log(`✓ ZEC burned: ${burnResult.txId}`);
+      console.log(`✓ Shielded ZEC collected: ${burnResult.txId}`);
       paymentStore.update(payment.id, {
         zcashBurnTxId: burnResult.txId,
-        status: "ZEC_BURNED",
+        status: "ZEC_COLLECTED",
       });
       payment = paymentStore.get(payment.id)!;
     }
 
     // Step 3: Post NEAR intent for solvers
-    if (payment.status === "ZEC_BURNED") {
+    if (payment.status === "ZEC_COLLECTED") {
       const intentId = randomUUID();
 
       console.log(`Posting NEAR intent for payment ${payment.id}`);
@@ -71,6 +75,8 @@ export async function processPayment(payment: Payment): Promise<void> {
         decimals: 18,
         zcashBurnTxid: payment.zcashBurnTxId!,
         createdAt: Date.now(),
+        fulfilled: false,
+        payout_tx_hash: null,
       });
 
       console.log(`✓ NEAR intent posted: ${intentId}`);

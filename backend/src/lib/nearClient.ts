@@ -18,6 +18,8 @@ export interface PaymentIntentPayload {
   decimals: number; // decimal places for destAsset
   zcashBurnTxid: string;
   createdAt: number;
+  fulfilled?: boolean;
+  payout_tx_hash?: string | null;
 }
 
 export interface NearIntentResponse extends PaymentIntentPayload {
@@ -89,16 +91,32 @@ export async function createNearIntent(
       intentId: intent.id,
       destChain: intent.destChain,
       destAddress: intent.destAddress,
-      amountAtomic: intent.amountWei,
+      amountAtomic: intent.amountAtomic,
     });
     return;
   }
 
+  const contractIntent = {
+    id: intent.id,
+    payment_id: intent.paymentId,
+    dest_chain: intent.destChain,
+    dest_asset: intent.destAsset,
+    dest_address: intent.destAddress,
+    amount_atomic: intent.amountAtomic?.toString() ?? "0",
+    decimals: Number(intent.decimals ?? 0),
+    zcash_burn_txid: intent.zcashBurnTxid,
+    created_at: intent.createdAt?.toString() ?? "0",
+    fulfilled: intent.fulfilled ?? false,
+    payout_tx_hash: intent.payout_tx_hash ?? null,
+  };
+
+  console.log("[NEAR] Sending intent payload", contractIntent);
+
   await nearAccount.functionCall({
     contractId: nearConfig.contractId,
     methodName: "create_intent",
-    args: intent,
-    gas: new utils.format.Gas("30000000000000"), // 30 Tgas
+    args: { intent: contractIntent },
+    gas: BigInt("30000000000000"), // 30 Tgas
   });
 
   console.log(`[NEAR] Intent created on-chain: ${intent.id}`);
@@ -148,7 +166,7 @@ export async function markNearIntentFulfilled(
     contractId: nearConfig.contractId,
     methodName: "mark_fulfilled",
     args: { id, payout_tx_hash: payoutTxHash },
-    gas: new utils.format.Gas("30000000000000"), // 30 Tgas
+    gas: BigInt("30000000000000"), // 30 Tgas
   });
 
   console.log(`[NEAR] Intent ${id} marked fulfilled on-chain`);

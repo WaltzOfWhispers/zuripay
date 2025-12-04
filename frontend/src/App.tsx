@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { EthereumProvider } from "@walletconnect/ethereum-provider";
 import {
   Payment,
   attachFundingTx,
@@ -10,6 +11,8 @@ import { SendForm, SendFormValues } from "./components/SendForm";
 import { StatusTimeline } from "./components/StatusTimeline";
 
 function App() {
+  const isHowItWorks = typeof window !== "undefined" &&
+    window.location.pathname.includes("how-it-works");
   const [payment, setPayment] = useState<Payment | null>(null);
   const [collectorAddress, setCollectorAddress] = useState<string>();
   const [amountWithFee, setAmountWithFee] = useState<string>();
@@ -18,9 +21,38 @@ function App() {
   const [resolvedRecipient, setResolvedRecipient] = useState<string>();
   const [walletAddress, setWalletAddress] = useState<string>();
   const [polling, setPolling] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [wcProvider, setWcProvider] = useState<any | null>(null);
+
+  // Render dedicated How It Works page
+  if (isHowItWorks) {
+    return (
+      <div className="app-shell">
+        <div className="hero">
+        <div className="pill">Zuri · Private Swap</div>
+        <h1>How it works</h1>
+        <p>End-to-end private routing without exposing the rails.</p>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <a className="button" href="/">
+            Back to app
+          </a>
+        </div>
+        </div>
+        <div className="card">
+          <div className="stack">
+            <div className="muted">1) You fund a collector address from your wallet.</div>
+            <div className="muted">
+              2) The backend posts an intent, applies the privacy layer, and routes solver payout.
+            </div>
+            <div className="muted">
+              3) Funds arrive privately at the destination; you track status in the app.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     getConnectedAddress()
@@ -57,13 +89,11 @@ function App() {
   const handleSubmit = async ({ recipient, amountEth }: SendFormValues) => {
     setBusy(true);
     setError(null);
-    setStatusMessage("Resolving recipient...");
 
     try {
-      const resolved = await resolveRecipient(recipient);
+      const resolved = await resolveRecipient(recipient, wcProvider ?? undefined);
       setResolvedRecipient(resolved);
 
-      setStatusMessage("Creating payment intent...");
       const intent = await createPaymentIntent({
         recipient: resolved,
         amountEth,
@@ -84,21 +114,19 @@ function App() {
 
       setPayment(newPayment);
 
-      setStatusMessage("Please confirm the funding transaction in your wallet...");
       const txHash = await sendEth({
         to: intent.collectorAddress,
         amountEth: intent.amountEthWithFee,
+        externalProvider: wcProvider ?? undefined,
       });
 
       setFundingTxHash(txHash);
-      setStatusMessage("Funding sent. Notifying backend...");
 
       await attachFundingTx({
         paymentId: intent.paymentId,
         fundingTxHash: txHash,
       });
 
-      setStatusMessage("Waiting for confirmations...");
       setPayment((prev) =>
         prev
           ? {
@@ -114,6 +142,56 @@ function App() {
       setError(err instanceof Error ? err.message : "Failed to start payment");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleConnectWallet = async () => {
+    try {
+      const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+      if (!projectId) {
+        setError("WalletConnect project ID missing");
+        return;
+      }
+      const provider = await EthereumProvider.init({
+        projectId,
+        showQrModal: true,
+        chains: [11155111], // Sepolia
+        optionalChains: [],
+        rpcMap: {
+          11155111: "https://rpc.sepolia.org",
+        },
+        methods: ["eth_sendTransaction", "eth_accounts", "eth_requestAccounts"],
+        events: ["chainChanged", "accountsChanged"],
+      });
+
+      provider.on("accountsChanged", (accounts: string[]) => {
+        if (accounts?.length) {
+          setWalletAddress(accounts[0]);
+        }
+      });
+
+      const session = await provider.connect();
+      const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
+      setWalletAddress(accounts[0]);
+      setWcProvider(provider);
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error && err.message ? err.message : "Wallet connection failed"
+      );
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      if (wcProvider) {
+        await wcProvider.disconnect();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setWalletAddress(undefined);
+      setWcProvider(null);
     }
   };
 
@@ -141,23 +219,37 @@ function App() {
   return (
     <div className="app-shell">
       <div className="hero">
-        <div className="pill">ZuriPay · Private payouts</div>
-        <h1>Pay anyone in ETH, settle privately with ZEC + NEAR intents</h1>
-        <p>
-          Frontend guides the funding transfer, backend burns ZEC, posts NEAR intent, and
-          instantly pays out from a solver wallet. No ZEC or NEAR knowledge required.
-        </p>
-        {walletAddress && (
-          <div className="badge">
-            Connected wallet: {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-          </div>
-        )}
+        <img src="/zuri-logo.svg" alt="Zuri logo" style={{ width: 64, height: 64 }} />
+        <h1 style={{ marginTop: 8 }}>Zuri</h1>
+        <p>Move value cross-chain without revealing the path.</p>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button
+            className="button"
+            onClick={() =>
+              document.getElementById("swap-card")?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            Send privately
+          </button>
+          {walletAddress ? (
+            <button className="button" type="button" onClick={handleDisconnect}>
+              Disconnect {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+            </button>
+          ) : (
+            <button className="button" type="button" onClick={handleConnectWallet}>
+              Connect wallet
+            </button>
+          )}
+          <a className="badge" href="/how-it-works">
+            How it works
+          </a>
+        </div>
       </div>
 
       <div className="grid">
-        <div className="card">
+        <div className="card" id="swap-card">
           <div className="stack">
-            <h3 style={{ margin: 0 }}>Send private payment</h3>
+            <h3 style={{ margin: 0 }}>Send privately</h3>
             <SendForm onSubmit={handleSubmit} disabled={busy} />
             {amountWithFee && (
               <div className="muted">
@@ -165,7 +257,6 @@ function App() {
                 collector <code>{collectorAddress}</code>
               </div>
             )}
-            {statusMessage && <div className="badge">{statusMessage}</div>}
             {error && <div className="badge">⚠️ {error}</div>}
           </div>
         </div>

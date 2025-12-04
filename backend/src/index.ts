@@ -4,6 +4,7 @@ import { initEthClient } from "./lib/eth";
 import { initNearClient } from "./lib/nearClient";
 import { startWorker } from "./worker";
 import { startSolver } from "./solver";
+import { registerHttpLightClient } from "./lib/zcashLightClient";
 
 // Load environment variables
 dotenv.config();
@@ -18,9 +19,12 @@ const NEAR_ACCOUNT_ID = process.env.NEAR_ACCOUNT_ID || "zuripay.testnet";
 const NEAR_PRIVATE_KEY = process.env.NEAR_PRIVATE_KEY;
 const NEAR_NODE_URL =
   process.env.NEAR_NODE_URL || "https://rpc.testnet.near.org";
+const ZCASH_LIGHT_CLIENT_URL = process.env.ZCASH_LIGHT_CLIENT_URL;
+const ZCASH_LIGHT_CLIENT_API_KEY = process.env.ZCASH_LIGHT_CLIENT_API_KEY;
+const ZCASH_SPENDING_KEY = process.env.ZCASH_SPENDING_KEY;
 
 async function main() {
-  console.log("🚀 Starting ZuriPay backend...");
+  console.log("🚀 Starting Zuri backend...");
 
   // Validate required environment variables
   if (!COLLECTOR_ADDRESS) {
@@ -47,6 +51,19 @@ async function main() {
   startWorker(10000); // Process every 10 seconds
   console.log("✓ Worker started");
 
+  // Register external Zcash light client wrapper if configured
+  if (ZCASH_LIGHT_CLIENT_URL) {
+    registerHttpLightClient(
+      ZCASH_LIGHT_CLIENT_URL,
+      ZCASH_LIGHT_CLIENT_API_KEY,
+      ZCASH_SPENDING_KEY
+    );
+  } else {
+    console.warn(
+      "⚠️  ZCASH_LIGHT_CLIENT_URL not set; Zcash burns/payouts will remain stubbed"
+    );
+  }
+
   // Start solver loop to fulfill intents with shielded ZEC
   console.log("Starting solver...");
   startSolver(10000);
@@ -55,7 +72,7 @@ async function main() {
   // Start API server
   app.listen(PORT, () => {
     console.log(`✓ API server listening on port ${PORT}`);
-    console.log(`\n🎉 ZuriPay backend is ready!`);
+    console.log(`\n🎉 Zuri backend is ready!`);
     console.log(`   API: http://localhost:${PORT}`);
     console.log(`   Health: http://localhost:${PORT}/api/health\n`);
   });

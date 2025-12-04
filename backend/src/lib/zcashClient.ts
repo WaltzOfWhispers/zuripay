@@ -1,8 +1,9 @@
 /**
- * Zcash Client for burning shielded ZEC (privacy layer)
+ * Zcash Client for burning and sending shielded ZEC via lightwalletd.
  *
- * This module handles the privacy aspect of ZuriPay by burning ZEC
- * from the app's shielded wallet for each payment intent.
+ * NOTE: This file now targets a light client flow (lightwalletd + SDK)
+ * instead of a full zcashd node. The calls are stubbed until you wire
+ * in a lightwalletd-aware library (e.g., zcash-light-client-ffi).
  */
 
 export interface ZcashBurnResult {
@@ -18,53 +19,45 @@ export interface ZcashPayoutResult {
   timestamp: number;
 }
 
-type ZcashRpcConfig = {
-  url: string;
-  username: string;
-  password: string;
+type ZcashLightClientConfig = {
+  endpoint: string;
+  viewingKey?: string;
+  spendingKey?: string;
   burnAddress?: string;
 };
 
-const rpcConfig: ZcashRpcConfig | null = process.env.ZCASH_RPC_URL
+const lightClientConfig: ZcashLightClientConfig | null = process.env.LIGHTWALLETD_ENDPOINT
   ? {
-      url: process.env.ZCASH_RPC_URL!,
-      username: process.env.ZCASH_RPC_USER || "",
-      password: process.env.ZCASH_RPC_PASS || "",
+      endpoint: process.env.LIGHTWALLETD_ENDPOINT!,
+      viewingKey: process.env.ZCASH_VIEWING_KEY,
+      spendingKey: process.env.ZCASH_SPENDING_KEY,
       burnAddress: process.env.ZCASH_BURN_ADDRESS,
     }
   : null;
 
-async function callZcashRpc<T = any>(
-  method: string,
-  params: any[] = []
-): Promise<T> {
-  if (!rpcConfig) {
-    throw new Error("Zcash RPC config missing");
-  }
+/**
+ * Interface you can implement with a real light client SDK wrapper.
+ */
+export interface ZcashLightClient {
+  sendShieldedTx(params: {
+    toAddress: string;
+    amountZec: string;
+    memo?: string;
+    spendingKey?: string;
+  }): Promise<string>; // returns tx id
+}
 
-  const res = await fetch(rpcConfig.url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization:
-        "Basic " +
-        Buffer.from(`${rpcConfig.username}:${rpcConfig.password}`).toString(
-          "base64"
-        ),
-    },
-    body: JSON.stringify({
-      jsonrpc: "1.0",
-      id: "zuripay",
-      method,
-      params,
-    }),
-  });
+let externalLightClient: ZcashLightClient | null = null;
 
-  const json = await res.json();
-  if (json.error) {
-    throw new Error(json.error.message || "Zcash RPC error");
-  }
-  return json.result as T;
+/**
+ * Provide a concrete light client implementation (e.g., zcash-light-client-ffi wrapper).
+ */
+export function setLightClient(client: ZcashLightClient) {
+  externalLightClient = client;
+}
+
+function isLightwalletdConfigured(): boolean {
+  return Boolean(lightClientConfig && lightClientConfig.endpoint);
 }
 
 /**
@@ -79,9 +72,9 @@ export async function burnZecForPayment(
   paymentId: string,
   amountZec: string
 ): Promise<ZcashBurnResult> {
-  if (!rpcConfig || !rpcConfig.burnAddress) {
+  if (!isLightwalletdConfigured()) {
     console.log(
-      `[STUB] Burning ${amountZec} ZEC for payment ${paymentId} (no RPC configured)`
+      `[STUB] Burning ${amountZec} ZEC for payment ${paymentId} (lightwalletd not configured)`
     );
     return {
       txId: `zcash-testnet-burn-${paymentId}-${Date.now()}`,
@@ -90,15 +83,26 @@ export async function burnZecForPayment(
     };
   }
 
-  const burnAddr = rpcConfig.burnAddress;
-  // Use z_sendmany to send from default shielded addr to burn address.
-  const recipients = [{ address: burnAddr, amount: Number(amountZec) }];
-  const opid = await callZcashRpc<string>("z_sendmany", ["", recipients]);
-  // Optionally wait for completion
-  console.log(`[ZEC] Burn operation submitted: ${opid}`);
+  // If an external light client is registered, use it.
+  if (externalLightClient && lightClientConfig?.burnAddress) {
+    const txId = await externalLightClient.sendShieldedTx({
+      toAddress: lightClientConfig.burnAddress,
+      amountZec,
+      memo: `burn:${paymentId}`,
+    });
+    return {
+      txId,
+      amountZec,
+      timestamp: Date.now(),
+    };
+  }
+
+  console.log(
+    `[STUB] Would send burn via lightwalletd ${lightClientConfig?.endpoint} to ${lightClientConfig?.burnAddress}`
+  );
 
   return {
-    txId: opid,
+    txId: `zcash-lightwalletd-burn-${paymentId}-${Date.now()}`,
     amountZec,
     timestamp: Date.now(),
   };
@@ -113,9 +117,9 @@ export async function sendShieldedPayout(
   toAddress: string,
   amountZec: string
 ): Promise<ZcashPayoutResult> {
-  if (!rpcConfig) {
+  if (!isLightwalletdConfigured()) {
     console.log(
-      `[STUB] Sending shielded payout of ${amountZec} ZEC to ${toAddress} (no RPC configured)`
+      `[STUB] Sending shielded payout of ${amountZec} ZEC to ${toAddress} (lightwalletd not configured)`
     );
     return {
       txId: `zcash-shielded-payout-${Date.now()}`,
@@ -125,14 +129,26 @@ export async function sendShieldedPayout(
     };
   }
 
-  const recipients = [{ address: toAddress, amount: Number(amountZec) }];
-  const opid = await callZcashRpc<string>("z_sendmany", ["", recipients]);
+  if (externalLightClient) {
+    const txId = await externalLightClient.sendShieldedTx({
+      toAddress,
+      amountZec,
+      memo: "payout",
+    });
+    return {
+      txId,
+      amountZec,
+      toAddress,
+      timestamp: Date.now(),
+    };
+  }
+
   console.log(
-    `[ZEC] Shielded payout submitted to ${toAddress} amount ${amountZec}, opid ${opid}`
+    `[STUB] Would send shielded payout via lightwalletd ${lightClientConfig?.endpoint} to ${toAddress} for ${amountZec} ZEC`
   );
 
   return {
-    txId: opid,
+    txId: `zcash-lightwalletd-payout-${Date.now()}`,
     amountZec,
     toAddress,
     timestamp: Date.now(),

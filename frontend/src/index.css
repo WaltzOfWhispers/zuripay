@@ -55,6 +55,8 @@ a {
   flex-direction: column;
   gap: 12px;
   margin-bottom: 24px;
+  align-items: center;
+  text-align: center;
 }
 
 .hero h1 {

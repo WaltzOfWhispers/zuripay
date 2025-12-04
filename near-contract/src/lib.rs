@@ -1,8 +1,19 @@
+use near_sdk::borsh::{self, BorshDeserialize, BorshSchema, BorshSerialize};
+use near_sdk::near;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, near_bindgen, BorshDeserialize, BorshSerialize, PanicOnDefault};
+use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault};
+use schemars::JsonSchema;
 
 /// Payment intent posted to NEAR for solver fulfillment.
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[derive(
+    BorshDeserialize,
+    BorshSerialize,
+    BorshSchema,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    Clone
+)]
 #[serde(crate = "near_sdk::serde")]
 pub struct PaymentIntent {
     pub id: String,              // UUID for this intent
@@ -18,17 +29,33 @@ pub struct PaymentIntent {
     pub payout_tx_hash: Option<String>,
 }
 
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+#[derive(Serialize, Deserialize, JsonSchema)]
+#[serde(crate = "near_sdk::serde")]
+pub struct PaymentIntentInput {
+    pub id: String,
+    pub payment_id: String,
+    pub dest_chain: String,
+    pub dest_asset: String,
+    pub dest_address: String,
+    pub amount_atomic: String,
+    pub decimals: u8,
+    pub zcash_burn_txid: String,
+    pub created_at: String,
+    pub fulfilled: bool,
+    pub payout_tx_hash: Option<String>,
+}
+
+#[near(contract_state)]
+#[derive(PanicOnDefault)]
 pub struct Contract {
     intents: Vec<PaymentIntent>,
-    owner: String,
+    owner: AccountId,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(owner: String) -> Self {
+    pub fn new(owner: AccountId) -> Self {
         Self {
             intents: Vec::new(),
             owner,
@@ -48,9 +75,30 @@ impl Contract {
 
     /// Create a new intent. In a production setting we would add access control
     /// to ensure only the orchestrator account can post intents.
-    pub fn create_intent(&mut self, intent: PaymentIntent) {
+    pub fn create_intent(&mut self, intent: PaymentIntentInput) {
         self.assert_owner();
-        self.intents.push(intent);
+        let amount_atomic = intent
+            .amount_atomic
+            .parse::<u128>()
+            .unwrap_or(0);
+        let created_at = intent
+            .created_at
+            .parse::<u64>()
+            .unwrap_or(0);
+        let stored = PaymentIntent {
+            id: intent.id,
+            payment_id: intent.payment_id,
+            dest_chain: intent.dest_chain,
+            dest_asset: intent.dest_asset,
+            dest_address: intent.dest_address,
+            amount_atomic,
+            decimals: intent.decimals,
+            zcash_burn_txid: intent.zcash_burn_txid,
+            created_at,
+            fulfilled: intent.fulfilled,
+            payout_tx_hash: intent.payout_tx_hash,
+        };
+        self.intents.push(stored);
         env::log_str("intent created");
     }
 
@@ -90,11 +138,12 @@ mod tests {
     use near_sdk::testing_env;
 
     fn setup(owner: &str) -> Contract {
+        let owner_id: AccountId = owner.parse().unwrap();
         let context = VMContextBuilder::new()
-            .predecessor_account_id(owner.parse().unwrap())
+            .predecessor_account_id(owner_id.clone())
             .build();
         testing_env!(context);
-        Contract::new(owner.to_string())
+        Contract::new(owner_id)
     }
 
     fn sample_intent(id: &str) -> PaymentIntent {
@@ -104,10 +153,10 @@ mod tests {
             dest_chain: "ethereum-sepolia".to_string(),
             dest_asset: "ETH".to_string(),
             dest_address: "0xBob".to_string(),
-            amount_atomic: 1000,
+            amount_atomic: U128(1000),
             decimals: 18,
             zcash_burn_txid: "burn123".to_string(),
-            created_at: 1,
+            created_at: U64(1),
             fulfilled: false,
             payout_tx_hash: None,
         }

@@ -1,13 +1,17 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import { randomUUID } from "crypto";
-import { Payment, paymentStore } from "../models/payment";
+import { Payment, PaymentStatus, paymentStore } from "../models/payment";
 import { getCollectorAddress } from "../lib/eth";
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+function normalizeStatus(status: PaymentStatus): PaymentStatus {
+  return status === "ZEC_BURNED" ? "ZEC_COLLECTED" : status;
+}
 
 /**
  * POST /api/create-payment-intent
@@ -109,7 +113,10 @@ app.get("/api/payment-status", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Payment not found" });
     }
 
-    res.json(payment);
+    res.json({
+      ...payment,
+      status: normalizeStatus(payment.status),
+    });
   } catch (error) {
     console.error("Error getting payment status:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -123,7 +130,12 @@ app.get("/api/payment-status", async (req: Request, res: Response) => {
 app.get("/api/payments", async (req: Request, res: Response) => {
   try {
     const payments = paymentStore.getAll();
-    res.json(payments);
+    res.json(
+      payments.map((p) => ({
+        ...p,
+        status: normalizeStatus(p.status),
+      }))
+    );
   } catch (error) {
     console.error("Error getting payments:", error);
     res.status(500).json({ error: "Internal server error" });

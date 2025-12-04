@@ -1,20 +1,23 @@
 import { BrowserProvider, ethers } from "ethers";
 
-function getProvider(): BrowserProvider {
-  const { ethereum } = window as any;
-  if (!ethereum) {
-    throw new Error("No injected wallet found. Please open with MetaMask.");
+function getProvider(externalProvider?: any): BrowserProvider {
+  const provider = externalProvider ?? (window as any).ethereum;
+  if (!provider) {
+    throw new Error("No wallet provider found. Connect a wallet first.");
   }
-  return new BrowserProvider(ethereum);
+  return new BrowserProvider(provider);
 }
 
-export async function resolveRecipient(recipient: string): Promise<string> {
+export async function resolveRecipient(
+  recipient: string,
+  externalProvider?: any
+): Promise<string> {
   // If already looks like address, return it
   if (ethers.isAddress(recipient)) {
     return ethers.getAddress(recipient);
   }
 
-  const provider = getProvider();
+  const provider = getProvider(externalProvider);
   const resolved = await provider.resolveName(recipient);
   if (!resolved) {
     throw new Error("Could not resolve ENS name");
@@ -25,10 +28,11 @@ export async function resolveRecipient(recipient: string): Promise<string> {
 export interface SendEthParams {
   to: string;
   amountEth: string;
+  externalProvider?: any;
 }
 
 export async function sendEth({ to, amountEth }: SendEthParams): Promise<string> {
-  const provider = getProvider();
+  const provider = getProvider(arguments[0]?.externalProvider);
   const signer = await provider.getSigner();
   const tx = await signer.sendTransaction({
     to,

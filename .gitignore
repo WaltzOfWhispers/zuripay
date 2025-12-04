@@ -32,3 +32,4 @@ Cargo.lock
 *.swo
 .idea
 .vscode
+frontend/.env

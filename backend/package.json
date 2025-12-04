@@ -1,7 +1,7 @@
 {
   "name": "zuripay-backend",
   "version": "1.0.0",
-  "description": "ZuriPay backend - Private payment processing via ZEC",
+  "description": "Zuri backend - Cross-chain private settlement via ZEC/NEAR intents",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
