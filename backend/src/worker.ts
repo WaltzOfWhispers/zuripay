@@ -1,9 +1,9 @@
 import { randomUUID } from "crypto";
 import { Payment, paymentStore } from "./models/payment";
 import { verifyDepositTx } from "./lib/eth";
-import { burnZecForPayment } from "./lib/zcashClient";
 import { createNearIntent } from "./lib/nearClient";
-import { ethers } from "ethers";
+import { ethers, parseUnits } from "ethers";
+import { verifySolDepositTx } from "./lib/solana";
 
 /**
  * Process a single payment through the full lifecycle:
@@ -15,6 +15,7 @@ import { ethers } from "ethers";
 export async function processPayment(payment: Payment): Promise<void> {
   try {
     console.log(`Processing payment ${payment.id}, status: ${payment.status}`);
+    console.log(`Funding tx hash present: ${Boolean(payment.fundingTxHash)} value: ${payment.fundingTxHash ?? "none"}`);
 
     // Step 1: Verify funding transaction
     if (payment.status === "WAITING_FOR_FUNDING") {
@@ -23,14 +24,42 @@ export async function processPayment(payment: Payment): Promise<void> {
         return;
       }
 
-      const expectedAmount = (
-        parseFloat(payment.amountEth) * 1.001
-      ).toFixed(6);
+      const payAsset = (payment.payAsset || "").toUpperCase();
+      const isSolPay = payAsset.startsWith("SOL") || payAsset.includes("USDC_SOL");
+      const isUsdcSol = payAsset.includes("USDC_SOL");
 
-      const confirmed = await verifyDepositTx(
-        payment.fundingTxHash,
-        expectedAmount
-      );
+      let confirmed = true;
+      if (!isSolPay) {
+        const expectedAmount = (
+          parseFloat(payment.amountEth) * 1.001
+        ).toFixed(6);
+
+        confirmed = await verifyDepositTx(
+          payment.fundingTxHash,
+          expectedAmount
+        );
+      } else if (isUsdcSol) {
+        const expectedUsdc = payment.payAmountFunding || payment.amountEth;
+        console.log(
+          `[SOL] Verifying USDC-SOL funding for payment ${payment.id} tx=${payment.fundingTxHash} expected=${expectedUsdc} payAsset=${payAsset} rpc=${process.env.SOL_RPC_URL}`
+        );
+        confirmed = await verifySolUsdcDepositTx(
+          payment.fundingTxHash,
+          expectedUsdc,
+          process.env.SOL_COLLECTOR_ADDRESS,
+          process.env.SOL_USDC_MINT
+        );
+      } else {
+        const expectedSol = payment.payAmountFunding || payment.amountEth;
+        console.log(
+          `[SOL] Verifying SOL funding for payment ${payment.id} tx=${payment.fundingTxHash} expected=${expectedSol} payAsset=${payAsset} rpc=${process.env.SOL_RPC_URL}`
+        );
+        confirmed = await verifySolDepositTx(
+          payment.fundingTxHash,
+          expectedSol,
+          process.env.SOL_COLLECTOR_ADDRESS
+        );
+      }
 
       if (!confirmed) {
         console.log(`Payment ${payment.id} funding not confirmed yet`);
@@ -42,38 +71,33 @@ export async function processPayment(payment: Payment): Promise<void> {
       payment = paymentStore.get(payment.id)!;
     }
 
-    // Step 2: Collect ZEC shielded for privacy anchor
+    // Step 2: Post NEAR intent for solvers (solver funds the payout)
     if (payment.status === "FUNDED") {
-      console.log(`Collecting shielded ZEC for payment ${payment.id}`);
-
-      // Burn a small fixed amount to conserve testnet funds
-      const amountZec = "0.001";
-
-      const burnResult = await burnZecForPayment(payment.id, amountZec);
-
-      console.log(`✓ Shielded ZEC collected: ${burnResult.txId}`);
-      paymentStore.update(payment.id, {
-        zcashBurnTxId: burnResult.txId,
-        status: "ZEC_COLLECTED",
-      });
-      payment = paymentStore.get(payment.id)!;
-    }
-
-    // Step 3: Post NEAR intent for solvers
-    if (payment.status === "ZEC_COLLECTED") {
       const intentId = randomUUID();
 
       console.log(`Posting NEAR intent for payment ${payment.id}`);
 
-      await createNearIntent({
+      const destAssetRaw = (payment.destAsset || "ETH").toUpperCase();
+      const isUsdcSol = destAssetRaw === "USDC_SOL" || destAssetRaw === "USDC-SOL";
+      const destAsset = isUsdcSol ? "USDC" : destAssetRaw;
+      const destAmount = payment.destAmount || payment.amountEth;
+      const destDecimals =
+        payment.destDecimals ?? (destAsset === "USDC" ? 6 : destAsset === "SOL" ? 9 : 18);
+
+      const amountAtomic = parseUnits(destAmount, destDecimals).toString();
+      const destChain =
+        payment.destChain ||
+        (destAsset === "SOL" || isUsdcSol ? "solana" : "ethereum-sepolia");
+
+      const nearTxHash = await createNearIntent({
         id: intentId,
         paymentId: payment.id,
-        destChain: "ethereum-sepolia",
-        destAsset: "ETH",
+        destChain,
+        destAsset,
         destAddress: payment.recipient,
-        amountAtomic: ethers.parseEther(payment.amountEth).toString(),
-        decimals: 18,
-        zcashBurnTxid: payment.zcashBurnTxId!,
+        amountAtomic,
+        decimals: destDecimals,
+        zcashBurnTxid: payment.zcashBurnTxId || "",
         createdAt: Date.now(),
         fulfilled: false,
         payout_tx_hash: null,
@@ -82,6 +106,8 @@ export async function processPayment(payment: Payment): Promise<void> {
       console.log(`✓ NEAR intent posted: ${intentId}`);
       paymentStore.update(payment.id, {
         nearIntentId: intentId,
+        // @ts-expect-error: extend payment with tx hash for UI explorer link
+        nearIntentTxHash: nearTxHash,
         status: "INTENT_POSTED",
       });
       payment = paymentStore.get(payment.id)!;
@@ -107,11 +133,7 @@ export async function startWorker(intervalMs: number = 10000): Promise<void> {
   const processLoop = async () => {
     try {
       // Process payments in various pending states
-      const pendingStatuses = [
-        "WAITING_FOR_FUNDING",
-        "FUNDED",
-        "ZEC_BURNED",
-      ] as const;
+      const pendingStatuses = ["WAITING_FOR_FUNDING", "FUNDED"] as const;
 
       for (const status of pendingStatuses) {
         const payments = paymentStore.getByStatus(status);

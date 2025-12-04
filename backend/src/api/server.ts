@@ -19,33 +19,92 @@ function normalizeStatus(status: PaymentStatus): PaymentStatus {
  */
 app.post("/api/create-payment-intent", async (req: Request, res: Response) => {
   try {
-    const { recipient, amountEth } = req.body;
+    const { recipient, destAsset = "ETH", destAmount, destChain: destChainInput, payAsset } = req.body;
 
-    if (!recipient || !amountEth) {
+    if (!recipient || !destAmount) {
       return res.status(400).json({
-        error: "Missing required fields: recipient, amountEth",
+        error: "Missing required fields: recipient, destAmount",
       });
     }
 
     // Validate amount
-    const amount = parseFloat(amountEth);
+    const amount = parseFloat(destAmount);
     if (isNaN(amount) || amount <= 0) {
       return res.status(400).json({
         error: "Invalid amount",
       });
     }
 
+    // Map asset to decimals and rough ETH conversion (placeholder; replace with real pricing)
+    const assetRaw = String(destAsset || "ETH").toUpperCase();
+    const isUsdcSol = assetRaw === "USDC_SOL" || assetRaw === "USDC-SOL";
+    const asset = isUsdcSol ? "USDC" : assetRaw;
+    const destDecimals = asset === "USDC" ? 6 : asset === "SOL" ? 9 : 18;
+    let destChain = destChainInput as string | undefined;
+    if (!destChain) {
+      destChain = asset === "SOL" || isUsdcSol ? "solana" : "ethereum-sepolia";
+    }
+    // Static price map (USD) for conversion between assets
+    // In production replace with a price oracle.
+    const priceUsd = (symbol: string) => {
+      switch (symbol) {
+        case "USDC":
+          return 1; // 1 USDC = $1
+        case "SOL":
+          return 20; // stub: 1 SOL = $20
+        default:
+          return 3000; // ETH price stub: $3000
+      }
+    };
+
+    const paySymbolRaw = String(payAsset || "ETH").toUpperCase();
+    const payIsUsdcSol = paySymbolRaw === "USDC_SOL" || paySymbolRaw === "USDC-SOL";
+    const paySymbol = payIsUsdcSol ? "USDC" : paySymbolRaw;
+
+    const destUsd = priceUsd(asset);
+    const payUsd = priceUsd(paySymbol);
+
+    // Convert destination value to pay asset using USD as bridge
+    const payAmountFunding = (amount * destUsd) / payUsd;
+    const payAmountWithFee = payAmountFunding * 1.001;
+    const payFee = payAmountWithFee - payAmountFunding;
+
+    // Keep ETH funding fields for compatibility (still ETH-only funding flow)
+    const amountEthValue = (payAmountFunding * payUsd) / priceUsd("ETH");
+    const amountEth = amountEthValue.toString();
+
     // Create payment record
     const paymentId = randomUUID();
     const collectorAddress = getCollectorAddress();
 
-    // Add small fee buffer (0.1%)
-    const amountWithFee = (amount * 1.001).toFixed(6);
+    // Add small fee buffer (0.1%) on the ETH funding side
+    const amountWithFee = (amountEthValue * 1.001).toFixed(6);
+    const feeEth = (parseFloat(amountWithFee) - amountEthValue).toFixed(6);
+
+    console.log("[QUOTE] dest", {
+      paymentId,
+      recipient,
+      destAsset: asset,
+      destAmount,
+      destUsd,
+      payAsset: paySymbol,
+      payUsd,
+      payAmountFunding: payAmountFunding.toFixed(6),
+      payAmountWithFee: payAmountWithFee.toFixed(6),
+    });
 
     const payment: Payment = {
       id: paymentId,
       recipient,
       amountEth,
+      payAsset: payAsset || "ETH",
+      payAmountFunding: payAmountFunding.toFixed(6),
+      payAmountWithFee: payAmountWithFee.toFixed(6),
+      payFee: payFee.toFixed(6),
+      destAsset: asset,
+      destAmount: destAmount.toString(),
+      destDecimals,
+        destChain,
       collectorAddress,
       status: "CREATED",
       createdAt: Date.now(),
@@ -58,6 +117,12 @@ app.post("/api/create-payment-intent", async (req: Request, res: Response) => {
       paymentId,
       collectorAddress,
       amountEthWithFee: amountWithFee,
+      amountEthFunding: amountEthValue.toFixed(6),
+      feeEth,
+      payAsset: payAsset || "ETH",
+      payAmountWithFee: payAmountWithFee.toFixed(6),
+      payAmountFunding: payAmountFunding.toFixed(6),
+      payFee: payFee.toFixed(6),
     });
   } catch (error) {
     console.error("Error creating payment intent:", error);
@@ -83,6 +148,8 @@ app.post("/api/attach-funding-tx", async (req: Request, res: Response) => {
     if (!payment) {
       return res.status(404).json({ error: "Payment not found" });
     }
+
+    console.log(`[API] attach-funding-tx payment=${paymentId} tx=${fundingTxHash}`);
 
     paymentStore.update(paymentId, {
       fundingTxHash,

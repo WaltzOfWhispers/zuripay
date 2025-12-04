@@ -83,7 +83,7 @@ export async function initNearClient(
  */
 export async function createNearIntent(
   intent: PaymentIntentPayload
-): Promise<void> {
+): Promise<string | void> {
   if (!nearAccount || !nearConfig.privateKey) {
     // Stub fallback
     intentStore.push({ ...intent, fulfilled: false });
@@ -112,14 +112,17 @@ export async function createNearIntent(
 
   console.log("[NEAR] Sending intent payload", contractIntent);
 
-  await nearAccount.functionCall({
+  const result = await nearAccount.functionCall({
     contractId: nearConfig.contractId,
     methodName: "create_intent",
     args: { intent: contractIntent },
     gas: BigInt("30000000000000"), // 30 Tgas
   });
 
-  console.log(`[NEAR] Intent created on-chain: ${intent.id}`);
+  const txHash = (result as any)?.transaction_outcome?.id || (result as any)?.transaction?.hash;
+  console.log(`[NEAR] Intent created on-chain: ${intent.id} tx=${txHash}`);
+
+  return txHash;
 }
 
 /**
@@ -138,7 +141,20 @@ export async function fetchOpenNearIntents(): Promise<PaymentIntentPayload[]> {
     args: {},
   });
 
-  return result as PaymentIntentPayload[];
+  // Normalize snake_case from contract into camelCase expected by solver
+  return (result as any[]).map((i) => ({
+    id: i.id,
+    paymentId: i.payment_id,
+    destChain: i.dest_chain,
+    destAsset: i.dest_asset,
+    destAddress: i.dest_address,
+    amountAtomic: i.amount_atomic?.toString?.() ?? i.amount_atomic,
+    decimals: Number(i.decimals ?? 18),
+    zcashBurnTxid: i.zcash_burn_txid,
+    createdAt: Number(i.created_at ?? 0),
+    fulfilled: i.fulfilled,
+    payout_tx_hash: i.payout_tx_hash ?? i.payoutTxHash ?? null,
+  }));
 }
 
 /**
@@ -188,5 +204,18 @@ export async function getNearIntent(id: string): Promise<NearIntentResponse | nu
     args: { id },
   });
 
-  return intent as NearIntentResponse;
+  const i = intent as any;
+  return {
+    id: i.id,
+    paymentId: i.payment_id,
+    destChain: i.dest_chain,
+    destAsset: i.dest_asset,
+    destAddress: i.dest_address,
+    amountAtomic: i.amount_atomic?.toString?.() ?? i.amount_atomic,
+    decimals: Number(i.decimals ?? 18),
+    zcashBurnTxid: i.zcash_burn_txid,
+    createdAt: Number(i.created_at ?? 0),
+    fulfilled: i.fulfilled,
+    payoutTxHash: i.payout_tx_hash ?? i.payoutTxHash ?? null,
+  };
 }

@@ -1,13 +1,14 @@
 import dotenv from "dotenv";
+import path from "path";
+// Load environment variables before other imports (explicit backend .env path)
+dotenv.config({ path: path.join(__dirname, "..", ".env") });
+
 import { app } from "./api/server";
 import { initEthClient } from "./lib/eth";
 import { initNearClient } from "./lib/nearClient";
 import { startWorker } from "./worker";
 import { startSolver } from "./solver";
 import { registerHttpLightClient } from "./lib/zcashLightClient";
-
-// Load environment variables
-dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 const SEPOLIA_RPC_URL =
@@ -21,7 +22,6 @@ const NEAR_NODE_URL =
   process.env.NEAR_NODE_URL || "https://rpc.testnet.near.org";
 const ZCASH_LIGHT_CLIENT_URL = process.env.ZCASH_LIGHT_CLIENT_URL;
 const ZCASH_LIGHT_CLIENT_API_KEY = process.env.ZCASH_LIGHT_CLIENT_API_KEY;
-const ZCASH_SPENDING_KEY = process.env.ZCASH_SPENDING_KEY;
 
 async function main() {
   console.log("🚀 Starting Zuri backend...");
@@ -55,8 +55,7 @@ async function main() {
   if (ZCASH_LIGHT_CLIENT_URL) {
     registerHttpLightClient(
       ZCASH_LIGHT_CLIENT_URL,
-      ZCASH_LIGHT_CLIENT_API_KEY,
-      ZCASH_SPENDING_KEY
+      ZCASH_LIGHT_CLIENT_API_KEY
     );
   } else {
     console.warn(

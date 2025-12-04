@@ -16,6 +16,7 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 backend/.env.example
+backend/.env
 
 # Build outputs
 frontend/.vite

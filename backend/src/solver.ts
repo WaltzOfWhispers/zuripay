@@ -13,6 +13,7 @@ import { paymentStore } from "./models/payment";
  * - Marks intents fulfilled on NEAR (stubbed) and updates local payment store
  */
 export async function startSolver(intervalMs: number = 10000): Promise<void> {
+  const mockSolverTx = process.env.MOCK_SOLVER_TX === "true";
   console.log(`Starting solver loop (interval: ${intervalMs}ms)`);
 
   const loop = async () => {
@@ -23,11 +24,29 @@ export async function startSolver(intervalMs: number = 10000): Promise<void> {
           `Solver picked intent ${intent.id} -> ${intent.destAddress} (${intent.destChain} ${intent.destAsset})`
         );
 
-        // Interpret amountWei as atomic units; convert to human-readable for logging
-        const amountZec = ethers.formatEther(intent.amountAtomic);
+        if (intent.amountAtomic == null) {
+          console.warn(
+            `Intent ${intent.id} missing amountAtomic; skipping fulfillment`
+          );
+          continue;
+        }
 
-        // Send shielded payout (stub)
-        const payout = await sendShieldedPayout(intent.destAddress, amountZec);
+        // Interpret amountAtomic using declared decimals (default 18) for logging
+        const decimals = Number(intent.decimals ?? 18);
+        const amountZec = ethers.formatUnits(
+          intent.amountAtomic.toString(),
+          decimals
+        );
+
+        // Optionally mock the solver payout to avoid touching real balances
+        const payout = mockSolverTx
+          ? {
+              txId: `mock-solver-${Date.now()}`,
+              amountZec,
+              toAddress: intent.destAddress,
+              timestamp: Date.now(),
+            }
+          : await sendShieldedPayout(intent.destAddress, amountZec);
 
         // Mark on NEAR (stub) as fulfilled
         await markNearIntentFulfilled(intent.id, payout.txId);

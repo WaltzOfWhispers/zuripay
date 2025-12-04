@@ -13,10 +13,19 @@ export interface Payment {
   id: string;
   recipient: string;
   amountEth: string;
+  payAsset?: string;
+  payAmountFunding?: string;
+  payAmountWithFee?: string;
+  payFee?: string;
+  destAsset?: string;
+  destAmount?: string;
+  destDecimals?: number;
+  destChain?: string;
   collectorAddress: string;
   fundingTxHash?: string;
   zcashBurnTxId?: string;
   nearIntentId?: string;
+  nearIntentTxHash?: string;
   payoutTxHash?: string;
   status: PaymentStatus;
   error?: string;
@@ -28,11 +37,19 @@ export interface CreatePaymentResponse {
   paymentId: string;
   collectorAddress: string;
   amountEthWithFee: string;
+  amountEthFunding?: string;
+  feeEth?: string;
+  payAsset?: string;
+  payAmountWithFee?: string;
+  payAmountFunding?: string;
+  payFee?: string;
 }
 
 export async function createPaymentIntent(params: {
   recipient: string;
-  amountEth: string;
+  destAsset: string;
+  destAmount: string;
+  payAsset?: string;
 }): Promise<CreatePaymentResponse> {
   const res = await fetch(`${API_BASE}/create-payment-intent`, {
     method: "POST",

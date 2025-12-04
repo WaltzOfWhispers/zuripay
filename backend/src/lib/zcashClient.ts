@@ -1,9 +1,9 @@
 /**
- * Zcash Client for burning and sending shielded ZEC via lightwalletd.
+ * Zcash Client for burning/collecting and sending shielded ZEC.
  *
- * NOTE: This file now targets a light client flow (lightwalletd + SDK)
- * instead of a full zcashd node. The calls are stubbed until you wire
- * in a lightwalletd-aware library (e.g., zcash-light-client-ffi).
+ * This repo does NOT run lightwalletd or zcashd. The only real path is via an
+ * externally registered light client (e.g., the HTTP sidecar). If none is
+ * registered, we return stubbed responses.
  */
 
 export interface ZcashBurnResult {
@@ -19,22 +19,6 @@ export interface ZcashPayoutResult {
   timestamp: number;
 }
 
-type ZcashLightClientConfig = {
-  endpoint: string;
-  viewingKey?: string;
-  spendingKey?: string;
-  burnAddress?: string;
-};
-
-const lightClientConfig: ZcashLightClientConfig | null = process.env.LIGHTWALLETD_ENDPOINT
-  ? {
-      endpoint: process.env.LIGHTWALLETD_ENDPOINT!,
-      viewingKey: process.env.ZCASH_VIEWING_KEY,
-      spendingKey: process.env.ZCASH_SPENDING_KEY,
-      burnAddress: process.env.ZCASH_BURN_ADDRESS,
-    }
-  : null;
-
 /**
  * Interface you can implement with a real light client SDK wrapper.
  */
@@ -42,12 +26,14 @@ export interface ZcashLightClient {
   sendShieldedTx(params: {
     toAddress: string;
     amountZec: string;
+    amountZat?: string;
     memo?: string;
     spendingKey?: string;
   }): Promise<string>; // returns tx id
 }
 
 let externalLightClient: ZcashLightClient | null = null;
+const collectAddress = process.env.ZCASH_COLLECT_ADDRESS;
 
 /**
  * Provide a concrete light client implementation (e.g., zcash-light-client-ffi wrapper).
@@ -56,15 +42,11 @@ export function setLightClient(client: ZcashLightClient) {
   externalLightClient = client;
 }
 
-function isLightwalletdConfigured(): boolean {
-  return Boolean(lightClientConfig && lightClientConfig.endpoint);
-}
-
 /**
  * Burn shielded ZEC to provide privacy for the payment
  * In production, this would:
  * 1. Send a shielded tx from app's Zcash wallet to a burn address
- * 2. Use Zcash SDK or CLI wrapper (zcash-cli, lightwalletd)
+ * 2. Use a Zcash light client SDK/sidecar to broadcast
  *
  * For MVP, this is stubbed but maintains the correct interface
  */
@@ -72,21 +54,10 @@ export async function burnZecForPayment(
   paymentId: string,
   amountZec: string
 ): Promise<ZcashBurnResult> {
-  if (!isLightwalletdConfigured()) {
-    console.log(
-      `[STUB] Burning ${amountZec} ZEC for payment ${paymentId} (lightwalletd not configured)`
-    );
-    return {
-      txId: `zcash-testnet-burn-${paymentId}-${Date.now()}`,
-      amountZec,
-      timestamp: Date.now(),
-    };
-  }
-
   // If an external light client is registered, use it.
-  if (externalLightClient && lightClientConfig?.burnAddress) {
+  if (externalLightClient && collectAddress) {
     const txId = await externalLightClient.sendShieldedTx({
-      toAddress: lightClientConfig.burnAddress,
+      toAddress: collectAddress,
       amountZec,
       memo: `burn:${paymentId}`,
     });
@@ -97,12 +68,12 @@ export async function burnZecForPayment(
     };
   }
 
+  // Stub path
   console.log(
-    `[STUB] Would send burn via lightwalletd ${lightClientConfig?.endpoint} to ${lightClientConfig?.burnAddress}`
+    `[STUB] Burning/collecting ${amountZec} ZEC for payment ${paymentId} (no external light client configured)`
   );
-
   return {
-    txId: `zcash-lightwalletd-burn-${paymentId}-${Date.now()}`,
+    txId: `zcash-testnet-burn-${paymentId}-${Date.now()}`,
     amountZec,
     timestamp: Date.now(),
   };
@@ -117,18 +88,6 @@ export async function sendShieldedPayout(
   toAddress: string,
   amountZec: string
 ): Promise<ZcashPayoutResult> {
-  if (!isLightwalletdConfigured()) {
-    console.log(
-      `[STUB] Sending shielded payout of ${amountZec} ZEC to ${toAddress} (lightwalletd not configured)`
-    );
-    return {
-      txId: `zcash-shielded-payout-${Date.now()}`,
-      amountZec,
-      toAddress,
-      timestamp: Date.now(),
-    };
-  }
-
   if (externalLightClient) {
     const txId = await externalLightClient.sendShieldedTx({
       toAddress,
@@ -143,12 +102,8 @@ export async function sendShieldedPayout(
     };
   }
 
-  console.log(
-    `[STUB] Would send shielded payout via lightwalletd ${lightClientConfig?.endpoint} to ${toAddress} for ${amountZec} ZEC`
-  );
-
   return {
-    txId: `zcash-lightwalletd-payout-${Date.now()}`,
+    txId: `zcash-shielded-payout-${Date.now()}`,
     amountZec,
     toAddress,
     timestamp: Date.now(),

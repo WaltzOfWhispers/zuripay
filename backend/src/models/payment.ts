@@ -10,11 +10,22 @@ export type PaymentStatus =
 export interface Payment {
   id: string;
   recipient: string;
+  // Deposit side (always ETH for now)
   amountEth: string;
+  payAsset?: string;
+  payAmountFunding?: string;
+  payAmountWithFee?: string;
+  payFee?: string;
+  // Destination asset details
+  destAsset?: string; // e.g., ETH, USDC, SOL, USDC_SOL
+  destAmount?: string; // human-readable amount in destination asset
+  destDecimals?: number; // decimals for destination asset
+  destChain?: string; // e.g., ethereum-sepolia, solana
   collectorAddress: string;
   fundingTxHash?: string;
   zcashBurnTxId?: string;
   nearIntentId?: string;
+  nearIntentTxHash?: string;
   payoutTxHash?: string;
   status: PaymentStatus;
   error?: string;
