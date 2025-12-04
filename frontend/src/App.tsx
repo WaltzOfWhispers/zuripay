@@ -215,9 +215,13 @@ function App() {
           externalProvider: wcProvider ?? undefined,
         });
       } else if (payAsset === "SOL") {
-        const solCollector = import.meta.env.VITE_SOL_COLLECTOR_ADDRESS;
+        const solCollector = import.meta.env.VITE_SOL_COLLECTOR_ADDRESS?.trim();
         if (!solCollector) {
           setError("SOL collector address not set.");
+          return;
+        }
+        if (!isSolAddress(solCollector)) {
+          setError("Configured SOL collector address is invalid.");
           return;
         }
         const solRpc =
@@ -234,27 +238,8 @@ function App() {
           rpcUrl: solRpc,
         });
       } else {
-        const solCollector = import.meta.env.VITE_SOL_COLLECTOR_ADDRESS;
-        const solRpc =
-          import.meta.env.VITE_SOL_RPC_URL || "https://api.devnet.solana.com";
-        const usdcMint =
-          import.meta.env.VITE_SOL_USDC_MINT || "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGz4";
-
-        if (!solCollector) {
-          setError("SOL collector address not set.");
-          return;
-        }
-        if (!payAmountToSend || parseFloat(payAmountToSend) <= 0) {
-          setError("Calculated USDC amount is invalid.");
-          return;
-        }
-
-        txHash = await sendUsdcSol({
-          to: solCollector,
-          amountUsdc: payAmountToSend,
-          rpcUrl: solRpc,
-          mint: usdcMint,
-        });
+        setError("USDC funding will be supported in a future release. Please use SOL or ETH for now.");
+        return;
       }
 
       setFundingTxHash(txHash);

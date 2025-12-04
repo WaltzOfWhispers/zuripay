@@ -26,7 +26,6 @@ export async function processPayment(payment: Payment): Promise<void> {
 
       const payAsset = (payment.payAsset || "").toUpperCase();
       const isSolPay = payAsset.startsWith("SOL") || payAsset.includes("USDC_SOL");
-      const isUsdcSol = payAsset.includes("USDC_SOL");
 
       let confirmed = true;
       if (!isSolPay) {
@@ -37,17 +36,6 @@ export async function processPayment(payment: Payment): Promise<void> {
         confirmed = await verifyDepositTx(
           payment.fundingTxHash,
           expectedAmount
-        );
-      } else if (isUsdcSol) {
-        const expectedUsdc = payment.payAmountFunding || payment.amountEth;
-        console.log(
-          `[SOL] Verifying USDC-SOL funding for payment ${payment.id} tx=${payment.fundingTxHash} expected=${expectedUsdc} payAsset=${payAsset} rpc=${process.env.SOL_RPC_URL}`
-        );
-        confirmed = await verifySolUsdcDepositTx(
-          payment.fundingTxHash,
-          expectedUsdc,
-          process.env.SOL_COLLECTOR_ADDRESS,
-          process.env.SOL_USDC_MINT
         );
       } else {
         const expectedSol = payment.payAmountFunding || payment.amountEth;
