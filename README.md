@@ -64,7 +64,7 @@ npm run dev
 NEAR contract
 ```bash
 cd near-contract
-cargo near build   # deploy to NEAR testnet and set NEAR_CONTRACT_ID in backend env
+cargo-near near build non-reproducible-wasm   # build the contract then deploy to NEAR testnet and set NEAR_CONTRACT_ID in backend env
 ```
 
 ## Required Env (fast path)
