@@ -40,7 +40,7 @@ Zuri shows how Zcash can serve as an invisible, renewable privacy backbone for S
 - **Frontend**: React/Vite/TS, WalletConnect (EVM), Phantom (Solana). Single-page form + timeline.
 - **Backend**: Node/TS, Express REST, in-memory payments, ETH & SOL funding verification, NEAR intent poster, solver loop (mock payouts by default).
 - **NEAR contract**: Rust, stores intents, mark_fulfilled.
-- **Privacy layer**: Zcash stub (interface ready; replace with light client later).
+- **Privacy layer**: Zcash HTTP sidecar that wraps the Zingolib light client and sends shielded transactions. See https://github.com/WaltzOfWhispers/zingolib/tree/dev/zingo-http
 
 ## Run It (local)
 ```bash
