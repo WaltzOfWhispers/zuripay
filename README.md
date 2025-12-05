@@ -8,7 +8,7 @@ Zuri demonstrates how Zcash can serve as the core privacy rail of a multichain w
 
 ## How Zuri Works
 
-User funds with any asset (e.g., SOL or ETH on Sepolia or Solana devnet).
+User funds with any asset (e.g., SOL or ETH or USDC).
 
 Zuri receives the user funding on the originating chain while paying out to the destination chain via ZEC shielded transfers.
 
