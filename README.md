@@ -1,4 +1,4 @@
-![Zuri send flow screenshot showing unified Solana pay-in and payout UX](frontend/public/zuri-ui.jpeg)
+![Zuri send flow screenshot showing ETH pay-in to Solana payout](frontend/public/zuri-ui.jpeg)
 
 # Zuri — Private, Cross‑Chain Settlement (Zypherpunk Hackathon)
 
